@@ -25,7 +25,9 @@ from app.models.schema import (
 )
 from app.services import llm, voice
 from app.services import task as tm
+from app.services.queue import queue_manager
 from app.utils import utils
+import time
 
 st.set_page_config(
     page_title="MoneyPrinterTurbo",
@@ -680,10 +682,14 @@ if not config.app.get("hide_config", False):
             save_keys_to_config("coverr_api_keys", coverr_api_key)
 
 llm_provider = config.app.get("llm_provider", "").lower()
-panel = st.columns(3)
-left_panel = panel[0]
-middle_panel = panel[1]
-right_panel = panel[2]
+tab_create, tab_queue = st.tabs([tr("Create Video"), tr("Task Queue & History")])
+
+with tab_create:
+    panel = st.columns(3)
+    left_panel = panel[0]
+    middle_panel = panel[1]
+    right_panel = panel[2]
+    bottom_container = st.container()
 
 params = VideoParams(video_subject="")
 params.match_materials_to_script = bool(
@@ -1334,7 +1340,7 @@ with right_panel:
             config.ui["rounded_subtitle_background"] = (
                 params.rounded_subtitle_background
             )
-    with st.expander(tr("Click to show API Key management"), expanded=False):
+    with bottom_container.expander(tr("Click to show API Key management"), expanded=False):
         st.subheader(tr("Manage Pexels, Pixabay and Coverr API Keys"))
 
         col1, col2, col3 = st.tabs([
@@ -1438,32 +1444,32 @@ with right_panel:
                     config.save_config()
                     st.success(tr("Coverr API Key deleted successfully"))
 
-start_button = st.button(tr("Generate Video"), use_container_width=True, type="primary")
+start_button = bottom_container.button(tr("Generate Video"), use_container_width=True, type="primary")
 if start_button:
     config.save_config()
     task_id = str(uuid4())
     if not params.video_subject and not params.video_script:
-        st.error(tr("Video Script and Subject Cannot Both Be Empty"))
+        bottom_container.error(tr("Video Script and Subject Cannot Both Be Empty"))
         scroll_to_bottom()
         st.stop()
 
     if params.video_source not in ["pexels", "pixabay", "coverr", "local"]:
-        st.error(tr("Please Select a Valid Video Source"))
+        bottom_container.error(tr("Please Select a Valid Video Source"))
         scroll_to_bottom()
         st.stop()
 
     if params.video_source == "pexels" and not config.app.get("pexels_api_keys", ""):
-        st.error(tr("Please Enter the Pexels API Key"))
+        bottom_container.error(tr("Please Enter the Pexels API Key"))
         scroll_to_bottom()
         st.stop()
 
     if params.video_source == "pixabay" and not config.app.get("pixabay_api_keys", ""):
-        st.error(tr("Please Enter the Pixabay API Key"))
+        bottom_container.error(tr("Please Enter the Pixabay API Key"))
         scroll_to_bottom()
         st.stop()
 
     if params.video_source == "coverr" and not config.app.get("coverr_api_keys", ""):
-        st.error(tr("Please Enter the Coverr API Key"))
+        bottom_container.error(tr("Please Enter the Coverr API Key"))
         scroll_to_bottom()
         st.stop()
 
@@ -1501,7 +1507,7 @@ if start_button:
         # 将已上传并保存到本地的视频素材写入会话，供后续只改文案时直接复用。
         st.session_state["local_video_materials"] = persisted_local_materials
     elif params.video_source == "local" and st.session_state["local_video_materials"]:
-        # 当用户没有重新上传文件时，复用最近一次已经保存到磁盘的本地素材列表。
+        # 当用户没有重新上传 file 时，复用最近一次已经保存到磁盘的本地素材列表。
         params.video_materials = []
         for material in st.session_state["local_video_materials"]:
             m = MaterialInfo()
@@ -1511,42 +1517,125 @@ if start_button:
             if m.url:
                 params.video_materials.append(m)
 
-    log_container = st.empty()
-    log_records = []
-
-    def log_received(msg):
-        if config.ui["hide_log"]:
-            return
-        with log_container:
-            log_records.append(msg)
-            st.code("\n".join(log_records))
-
-    logger.add(log_received)
-
-    st.toast(tr("Generating Video"))
-    logger.info(tr("Start Generating Video"))
-    logger.info(utils.to_json(params))
+    # Đẩy tác vụ vào hàng chờ xử lý tuần tự dưới nền
+    queued_task_id = queue_manager.add_task(params.video_subject or params.video_script[:30], params)
+    st.toast(tr("Added to Queue Successfully!"))
+    bottom_container.success(f"🎉 {tr('Task added to queue')} ID: `{queued_task_id}`. Vui lòng kiểm tra tiến độ bên Tab 'Hàng Chờ & Lịch Sử'.")
     scroll_to_bottom()
 
-    result = tm.start(task_id=task_id, params=params)
-    if not result or "videos" not in result:
-        st.error(tr("Video Generation Failed"))
-        logger.error(tr("Video Generation Failed"))
-        scroll_to_bottom()
-        st.stop()
+# Render Tab Hàng chờ & Lịch sử
+with tab_queue:
+    st.subheader(tr("Task Queue & History"))
+    
+    # Nút bấm thủ công làm mới và dọn dẹp lịch sử
+    col_ref, col_clear = st.columns([8, 2])
+    with col_ref:
+        if st.button("🔄 Làm mới hàng chờ", use_container_width=True):
+            st.rerun()
+            
+    # Lấy danh sách nhiệm vụ từ queue_manager
+    tasks = queue_manager.get_tasks()
+    
+    # 1. Thống kê nhanh
+    total_tasks = len(tasks)
+    pending_tasks = sum(1 for t in tasks if t["status"] == "pending")
+    processing_tasks = sum(1 for t in tasks if t["status"] == "processing")
+    completed_tasks = sum(1 for t in tasks if t["status"] == "complete")
+    failed_tasks = sum(1 for t in tasks if t["status"] == "failed")
+    
+    with col_ref:
+        col_stat1, col_stat2, col_stat3, col_stat4, col_stat5 = st.columns(5)
+        col_stat1.metric(tr("Total Tasks"), total_tasks)
+        col_stat2.metric(tr("Pending"), pending_tasks)
+        col_stat3.metric(tr("Processing"), processing_tasks)
+        col_stat4.metric(tr("Completed"), completed_tasks)
+        col_stat5.metric(tr("Failed"), failed_tasks)
+        
+    with col_clear:
+        if st.button("🧹 " + tr("Clear History"), use_container_width=True):
+            # Xóa các tác vụ đã hoàn thành hoặc thất bại
+            to_delete = [t["task_id"] for t in tasks if t["status"] in ["complete", "failed"]]
+            for tid in to_delete:
+                queue_manager.delete_task(tid)
+            st.toast("Đã dọn dẹp lịch sử!")
+            st.rerun()
+            
+    st.write("---")
+    
+    # 2. Render danh sách các tác vụ
+    if not tasks:
+        st.info("Hàng chờ trống. Hãy tạo cấu hình bên Tab 'Tạo Video' rồi bấm 'Tạo Video' để bắt đầu!")
+    else:
+        for t in tasks:
+            task_id = t["task_id"]
+            status = t["status"]
+            subject = t["subject"]
+            progress = t["progress"]
+            created_at = t["created_at"]
+            completed_at = t["completed_at"]
+            error = t["error"]
+            videos = t.get("videos", [])
+            
+            # Đổi màu sắc trạng thái
+            if status == "pending":
+                status_md = f"⚪ **{tr('Pending')}**"
+            elif status == "processing":
+                status_md = f"🟡 **{tr('Processing')}** ({progress}%)"
+            elif status == "complete":
+                status_md = f"🟢 **{tr('Completed')}**"
+            else:
+                status_md = f"🔴 **{tr('Failed')}**"
+                
+            with st.container(border=True):
+                col_meta, col_prev, col_act = st.columns([3.5, 4.5, 2.0])
+                
+                with col_meta:
+                    st.markdown(f"**Mã tác vụ:** `{task_id}`")
+                    st.markdown(f"**Trạng thái:** {status_md}")
+                    st.markdown(f"**Thời gian tạo:** `{created_at}`")
+                    if completed_at:
+                        st.markdown(f"**Hoàn thành lúc:** `{completed_at}`")
+                        
+                with col_prev:
+                    st.markdown(f"**Chủ đề:** *{subject}*")
+                    script_text = t["params"].get("video_script", "")
+                    if script_text:
+                        with st.expander("📝 Xem kịch bản chi tiết"):
+                            st.write(script_text)
+                            
+                with col_act:
+                    if st.button("🗑️ " + tr("Delete"), key=f"del_{task_id}", use_container_width=True):
+                        queue_manager.delete_task(task_id)
+                        st.toast("Đã xóa tác vụ.")
+                        st.rerun()
+                        
+                    if status == "complete" and videos:
+                        for idx, video_path in enumerate(videos):
+                            if os.path.exists(video_path):
+                                with st.expander(f"▶️ Phát Video {idx+1}"):
+                                    st.video(video_path)
+                                with open(video_path, "rb") as vf:
+                                    st.download_button(
+                                        label=f"⬇️ Tải Video {idx+1}",
+                                        data=vf,
+                                        file_name=os.path.basename(video_path),
+                                        mime="video/mp4",
+                                        key=f"dl_{task_id}_{idx}",
+                                        use_container_width=True
+                                    )
+                            else:
+                                st.warning("File video đã bị xóa khỏi đĩa.")
+                                
+                    elif status == "processing":
+                        st.progress(progress / 100)
+                        
+                    elif status == "failed" and error:
+                        with st.expander("❌ Chi tiết lỗi"):
+                            st.error(error)
 
-    video_files = result.get("videos", [])
-    st.success(tr("Video Generation Completed"))
-    try:
-        if video_files:
-            player_cols = st.columns(len(video_files) * 2 + 1)
-            for i, url in enumerate(video_files):
-                player_cols[i * 2 + 1].video(url)
-    except Exception:
-        pass
-
-    open_task_folder(task_id)
-    logger.info(tr("Video Generation Completed"))
-    scroll_to_bottom()
+    # 3. Tự động refresh nếu có tác vụ đang chạy dưới nền
+    if any(t["status"] == "processing" for t in tasks):
+        time.sleep(3)
+        st.rerun()
 
 config.save_config()

@@ -160,6 +160,17 @@
     "Coverr API Key deleted successfully": "Xóa API Key Coverr thành công",
     "Advanced Video Settings": "Cài Đặt Video Nâng Cao",
     "Video Encoder": "Bộ Mã Hóa Video",
-    "Video Encoder Help": "Tùy chọn nâng cao. libx264 là lựa chọn mặc định an toàn nhất. Khi chọn bộ mã hóa phần cứng, ứng dụng sẽ tự chuyển về libx264 nếu FFmpeg, GPU hoặc driver hiện tại không hỗ trợ."
+    "Video Encoder Help": "Tùy chọn nâng cao. libx264 là lựa chọn mặc định an toàn nhất. Khi chọn bộ mã hóa phần cứng, ứng dụng sẽ tự chuyển về libx264 nếu FFmpeg, GPU hoặc driver hiện tại không hỗ trợ.",
+    "Create Video": "Tạo Video",
+    "Task Queue & History": "Hàng Chờ & Lịch Sử",
+    "Total Tasks": "Tổng Số Tác Vụ",
+    "Pending": "Đang Chờ",
+    "Processing": "Đang Xử Lý",
+    "Completed": "Đã Hoàn Thành",
+    "Failed": "Thất Bại",
+    "Clear History": "Dọn Lịch Sử",
+    "Delete": "Xóa",
+    "Added to Queue Successfully!": "Đã thêm vào hàng chờ thành công!",
+    "Task added to queue": "Tác vụ đã được đưa vào hàng chờ."
   }
 }
