@@ -1628,10 +1628,15 @@ with tab_queue:
                                 
                     elif status == "processing":
                         st.progress(progress / 100)
-                        
-                    elif status == "failed" and error:
-                        with st.expander("❌ Chi tiết lỗi"):
-                            st.error(error)
+                                
+                    elif status == "failed":
+                        if st.button("🔄 " + tr("Retry"), key=f"retry_{task_id}", use_container_width=True):
+                            queue_manager.retry_task(task_id)
+                            st.toast("Đã đưa tác vụ quay lại hàng chờ.")
+                            st.rerun()
+                        if error:
+                            with st.expander("❌ Chi tiết lỗi"):
+                                st.error(error)
 
     # 3. Tự động refresh nếu có tác vụ đang chạy dưới nền
     if any(t["status"] == "processing" for t in tasks):

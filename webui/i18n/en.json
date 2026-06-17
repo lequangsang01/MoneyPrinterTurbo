@@ -173,6 +173,7 @@
     "Clear History": "Clear History",
     "Delete": "Delete",
     "Added to Queue Successfully!": "Added to Queue Successfully!",
-    "Task added to queue": "Task added to queue."
+    "Task added to queue": "Task added to queue.",
+    "Retry": "Retry"
   }
 }

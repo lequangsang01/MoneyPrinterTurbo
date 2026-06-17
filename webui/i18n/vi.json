@@ -171,6 +171,7 @@
     "Clear History": "Dọn Lịch Sử",
     "Delete": "Xóa",
     "Added to Queue Successfully!": "Đã thêm vào hàng chờ thành công!",
-    "Task added to queue": "Tác vụ đã được đưa vào hàng chờ."
+    "Task added to queue": "Tác vụ đã được đưa vào hàng chờ.",
+    "Retry": "Chạy Lại"
   }
 }

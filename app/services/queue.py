@@ -109,6 +109,20 @@ class QueueManager:
             except Exception as e:
                 logger.error(f"Lỗi khi xóa thư mục task {task_id}: {e}")
 
+    def retry_task(self, task_id: str):
+        """Đặt lại trạng thái tác vụ bị lỗi để chạy lại."""
+        with self.lock:
+            for t in self.tasks:
+                if t["task_id"] == task_id:
+                    t["status"] = STATUS_PENDING
+                    t["progress"] = 0
+                    t["error"] = ""
+                    t["completed_at"] = ""
+                    self._save_queue()
+                    sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=0)
+                    logger.info(f"Đã chuyển trạng thái tác vụ {task_id} thành pending để chạy lại.")
+                    break
+
     def get_tasks(self):
         """Lấy danh sách các tác vụ trong hàng chờ."""
         with self.lock:
